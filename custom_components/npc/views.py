@@ -3,6 +3,7 @@
 import json
 import logging
 import mimetypes
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -176,6 +177,20 @@ class EVNMonthlyDataView(HomeAssistantView):
             # Get bills for current year
             current_year = datetime.now().year
             bills = layhoadon(account, current_year)
+
+            # Ghi đè số liệu từ file /config/npc_monthly_override.json
+            # Định dạng: {"2026": {"1": [kWh, tiền], "2": [kWh, tiền], ...}}
+            try:
+                p = self.hass.config.path("npc_monthly_override.json")
+                if os.path.exists(p):
+                    with open(p, encoding="utf-8") as f:
+                        ov = json.load(f).get(str(current_year), {})
+                    d = {int(b[0]): (int(b[0]), b[1], b[2]) for b in bills}
+                    for m, val in ov.items():
+                        d[int(m)] = (int(m), float(val[1]), float(val[0]))
+                    bills = [d[k] for k in sorted(d)]
+            except Exception as ov_ex:
+                _LOGGER.warning("npc override error: %s", ov_ex)
             
             # Format data for webui
             # layhoadon returns list of tuples: (thang, tien_dien, san_luong_kwh)
