@@ -9,9 +9,10 @@ from pathlib import Path
 
 from aiohttp import web
 from homeassistant.components.http import HomeAssistantView
+from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, CONF_CUSTOMER_ID
-from .utils import layhoadon, laykhoangtieuthukynay, lay_ky_hien_tai
+from .utils import layhoadon, laykhoangtieuthukynay, lay_ky_hien_tai, laylichcatdien
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -344,3 +345,85 @@ class EVNCurrentPeriodView(HomeAssistantView):
                 {"error": str(ex)},
                 status=500
             )
+
+
+def _parse_outage_time(value):
+    """Parse 'HH:MM' or 'HH:MM:SS' into a datetime.time, or None."""
+    text = str(value or "").strip()
+    for fmt in ("%H:%M:%S", "%H:%M"):
+        try:
+            return datetime.strptime(text, fmt).time()
+        except ValueError:
+            continue
+    return None
+
+
+def classify_outages(events, now):
+    """Split outage events (from laylichcatdien) into ongoing/upcoming/past.
+
+    `now` is a naive local datetime. Each event has keys: Ngày (dd-mm-yyyy),
+    Thời gian từ, Thời gian đến, Lý do, Khu vực.
+    """
+    upcoming, past = [], []
+    for event in events:
+        try:
+            day = datetime.strptime(str(event.get("Ngày") or ""), "%d-%m-%Y").date()
+        except ValueError:
+            continue
+
+        t_from = _parse_outage_time(event.get("Thời gian từ")) or datetime.min.time()
+        start = datetime.combine(day, t_from)
+        t_to = _parse_outage_time(event.get("Thời gian đến"))
+        if t_to is None:
+            end = datetime.combine(day, datetime.max.time())
+        else:
+            end = datetime.combine(day, t_to)
+            if end < start:  # qua nửa đêm
+                end += timedelta(days=1)
+
+        item = {
+            "date": day.strftime("%d/%m/%Y"),
+            "from": t_from.strftime("%H:%M"),
+            "to": t_to.strftime("%H:%M") if t_to else "",
+            "reason": event.get("Lý do") or "",
+            "area": event.get("Khu vực") or "",
+            "start": start.isoformat(),
+            "ongoing": start <= now <= end,
+        }
+        if end >= now:
+            upcoming.append((start, item))
+        else:
+            past.append((start, item))
+
+    upcoming.sort(key=lambda x: x[0])
+    past.sort(key=lambda x: x[0], reverse=True)
+    return [i for _, i in upcoming], [i for _, i in past]
+
+
+class EVNOutageView(HomeAssistantView):
+    """View to return power outage schedule for an account."""
+
+    url = "/api/npc/outage/{account}"
+    name = "api:npc:outage"
+    requires_auth = False
+
+    def __init__(self, hass):
+        """Initialize the view."""
+        self.hass = hass
+
+    async def get(self, request, account):
+        """Get outage schedule (upcoming + recent past) from database."""
+        try:
+            events = await self.hass.async_add_executor_job(laylichcatdien, account)
+            now = dt_util.now().replace(tzinfo=None)
+            upcoming, past = classify_outages(events, now)
+            return web.json_response({
+                "account": account,
+                "upcoming": upcoming,
+                "past": past[:10],
+                "total": len(events),
+                "updated": now.isoformat(),
+            })
+        except Exception as ex:
+            _LOGGER.error("Error getting outage schedule for %s: %s", account, str(ex), exc_info=True)
+            return web.json_response({"error": str(ex)}, status=500)
