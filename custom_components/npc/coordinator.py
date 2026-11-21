@@ -98,9 +98,10 @@ class EVNDataUpdateCoordinator(DataUpdateCoordinator):
                 # Also save to monthly_bill table
                 await self._save_hoadon_to_monthly_bill(bill_data["data"])
 
-            # Fetch power outage schedule (from start date to today)
+            # Fetch power outage schedule (from start date to 30 days ahead,
+            # so scheduled future outages are included like in the EVN app)
             from_date = start_date.strftime("%d/%m/%Y")
-            to_date = today.strftime("%d/%m/%Y")
+            to_date = (today + timedelta(days=30)).strftime("%d/%m/%Y")
             outage_data = await self.api.get_ngungcapdien(from_date, to_date)
             if outage_data and outage_data.get("data"):
                 await self._save_outage_data(outage_data["data"])
