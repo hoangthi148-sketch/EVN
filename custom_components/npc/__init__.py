@@ -16,7 +16,7 @@ from .const import (
 )
 from .npc_api import EVNAPI
 from .coordinator import EVNDataUpdateCoordinator
-from .views import EVNStaticView, EVNPingView, EVNOptionsView, EVNMonthlyDataView, EVNDailyDataView, EVNCurrentPeriodView
+from .views import EVNStaticView, EVNPingView, EVNOptionsView, EVNMonthlyDataView, EVNDailyDataView, EVNCurrentPeriodView, EVNOutageView
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 _LOGGER = logging.getLogger(__name__)
@@ -65,6 +65,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.http.register_view(EVNMonthlyDataView(hass))
         hass.http.register_view(EVNDailyDataView(hass))
         hass.http.register_view(EVNCurrentPeriodView(hass))
+        hass.http.register_view(EVNOutageView(hass))
         hass.data.setdefault(DOMAIN, {})["api_registered"] = True
         _LOGGER.info("Registered NPC API endpoints and WebUI at %s", webui_path)
 
