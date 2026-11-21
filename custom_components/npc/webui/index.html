@@ -93,7 +93,15 @@
                 </div>
             </div>
         </div> <!-- Main Grid -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3"> <!-- Summary Card -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3"> <!-- Outage Card -->
+            <div class="card p-3 col-span-1 md:col-span-2 lg:col-span-3" id="outageCard">
+                <div class="flex items-center justify-between mb-2">
+                    <h3 class="text-base font-semibold"><i class="fas fa-plug text-yellow-400"></i> Lịch Cắt Điện</h3>
+                    <span id="outageBadge" class="text-xs"></span>
+                </div>
+                <div id="outageList" class="text-sm">Đang tải...</div>
+                <details id="outagePast" class="outage-past" style="display:none"></details>
+            </div> <!-- Summary Card -->
             <div class="card p-2 col-span-1"> <!-- Header with title -->
                 <div class="flex items-center justify-between mb-2">
                     <h3 class="text-base font-semibold">Tổng Quan</h3>
@@ -261,6 +269,7 @@
     <script src="assets/js/ui.js"></script>
     <script src="assets/js/main.js"></script>
     <script src="assets/js/config-modal.js"></script>
+    <script src="assets/js/outage.js"></script>
     <!-- Đảm bảo KHÔNG có bất kỳ lệnh nào như showConfigModal() hoặc document.getElementById('configModal').classList.remove('hidden') chạy khi load trang. -->
 </body>
 
