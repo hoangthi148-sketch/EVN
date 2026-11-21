@@ -1100,8 +1100,9 @@ class EVNAPI:
                                     _LOGGER.debug(f"get_ngungcapdien failed with status {retry_resp.status}")
                                     return None
                                 data = await retry_resp.json()
+                                _LOGGER.debug("%s outage (retry) payload=%s raw=%s", self.region, payload, json.dumps(data, ensure_ascii=False)[:3000])
                                 # Chuyển đổi format cho CPC
-                                if self.region == "CPC" and isinstance(data, dict) and data.get("data"):
+                                if self.region in ("CPC", "NPC") and isinstance(data, dict) and data.get("data"):
                                     if isinstance(data["data"], list):
                                         converted_data = self._convert_cpc_outage_to_standard_format(data["data"])
                                         return {"data": converted_data}
@@ -1109,12 +1110,13 @@ class EVNAPI:
                         return None
 
                     if resp.status != 200:
-                        _LOGGER.debug(f"get_ngungcapdien failed with status {resp.status}")
+                        _LOGGER.warning("get_ngungcapdien failed with status %s: %s", resp.status, (await resp.text())[:500])
                         return None
 
                     data = await resp.json()
+                    _LOGGER.debug("%s outage payload=%s raw=%s", self.region, payload, json.dumps(data, ensure_ascii=False)[:3000])
                     # Chuyển đổi format cho CPC
-                    if self.region == "CPC" and isinstance(data, dict) and data.get("data"):
+                    if self.region in ("CPC", "NPC") and isinstance(data, dict) and data.get("data"):
                         if isinstance(data["data"], list):
                             converted_data = self._convert_cpc_outage_to_standard_format(data["data"])
                             return {"data": converted_data}
