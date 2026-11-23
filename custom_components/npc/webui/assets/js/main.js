@@ -505,14 +505,12 @@ class ElectricityApp {
 
     // Hàm tính toán tiền điện theo bậc thang tích lũy đúng cách
     calculateDailyCostWithTiers(sortedData) {
-        const tiers = [
-            { limit: 50, price: 1984 },
-            { limit: 50, price: 2050 },
-            { limit: 100, price: 2380 },
-            { limit: 100, price: 2998 },
-            { limit: 100, price: 3350 },
-            { limit: Infinity, price: 3460 }
-        ];
+        // Chọn biểu giá theo ngày cuối của dữ liệu đang xem (cả tháng dùng cùng một biểu giá)
+        const lastDay = sortedData.length ? String(sortedData[sortedData.length - 1].Ngày || '') : '';
+        const dm = lastDay.match(/(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);
+        const bg = npcTariffAt(dm ? new Date(+dm[3], +dm[2] - 1, +dm[1]) : new Date());
+        const tiers = bg.tiers;
+        const vat = bg.vat;
 
         let cumulativeKwh = 0;
         let previousTotalCost = 0;
@@ -527,7 +525,7 @@ class ElectricityApp {
             cumulativeKwh += kwh;
 
             // Tính tổng tiền từ đầu chu kỳ đến ngày hiện tại
-            const currentTotalCost = this.calculateCostFromTiers(cumulativeKwh, tiers);
+            const currentTotalCost = this.calculateCostFromTiers(cumulativeKwh, tiers, vat);
 
             // Tiền điện của ngày hiện tại = tổng tiền hiện tại - tổng tiền ngày trước
             const dailyCost = currentTotalCost - previousTotalCost;
@@ -550,7 +548,7 @@ class ElectricityApp {
     }
 
     // Hàm tính tổng tiền điện từ các bậc thang (với thuế)
-    calculateCostFromTiers(totalKwh, tiers) {
+    calculateCostFromTiers(totalKwh, tiers, vat = 0.08) {
         let remainingKwh = totalKwh;
         let totalCost = 0;
         let usedSoFar = 0;
@@ -571,8 +569,8 @@ class ElectricityApp {
             }
         }
 
-        // Thêm thuế VAT 8%
-        const tax = totalCost * 0.08;
+        // Thêm thuế VAT theo biểu giá
+        const tax = totalCost * vat;
         return totalCost + tax;
     }
 
