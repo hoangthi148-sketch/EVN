@@ -61,31 +61,75 @@ def tinhngaydauky(ngaydauky: int, today: Optional[datetime] = None):
     prev_end_ky = start - timedelta(days=1)
     return start, end, end_ky, prev_end_ky
 
-# Hàm tính tiền điện bậc thang
+# ===== BIỂU GIÁ ĐIỆN SINH HOẠT THEO NGÀY HIỆU LỰC =====
+# Sửa ở đây khi giá hoặc VAT thay đổi: THÊM một mục mới ở cuối, KHÔNG sửa mục cũ.
+#   from : ngày bắt đầu áp dụng (YYYY-MM-DD)
+#   vat  : thuế VAT (0.08 = 8%)
+#   tiers: [(số kWh trong bậc, đơn giá đ/kWh chưa VAT), ...]; bậc cuối dùng None (không giới hạn)
+# Mỗi kỳ/tháng được tính theo biểu giá có hiệu lực tại NGÀY CUỐI KỲ, nên các kỳ cũ giữ nguyên số tiền
+# khi có biểu giá mới.
+BIEU_GIA = [
+    {"from": "2025-05-10", "vat": 0.08,
+     "tiers": [(50, 1984), (50, 2050), (100, 2380), (100, 2998), (100, 3350), (None, 3460)]},
+    {"from": "2026-11-01", "vat": 0.08,
+     "tiers": [(100, 1901), (100, 2289), (200, 2894), (300, 3456), (None, 3844)]},
+]
+
+
+def _to_date(ngay):
+    """Chấp nhận date/datetime/chuỗi YYYY-MM-DD hoặc dd-mm-YYYY (dd/mm/YYYY); None = hôm nay."""
+    if ngay is None:
+        return datetime.now().date()
+    if isinstance(ngay, datetime):
+        return ngay.date()
+    if hasattr(ngay, "year") and hasattr(ngay, "month") and hasattr(ngay, "day"):
+        return ngay
+    t = str(ngay).strip()
+    for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(t[:10], fmt).date()
+        except ValueError:
+            continue
+    return datetime.now().date()
+
+
+def lay_bieu_gia(ngay=None):
+    """Biểu giá có hiệu lực tại ngày `ngay` (mặc định hôm nay); ngày trước mọi mục thì dùng mục đầu."""
+    key = _to_date(ngay).strftime("%Y-%m-%d")
+    chon = BIEU_GIA[0]
+    for bg in BIEU_GIA:
+        if bg["from"] <= key:
+            chon = bg
+    return chon
+
+
+# Hàm tính tiền điện bậc thang theo biểu giá tại ngày `ngay` (thường là ngày cuối kỳ)
 # Trả về: tổng tiền đã gồm thuế, dict chi tiết
 
 
-def tinhtiendien(kwh):
+def tinhtiendien(kwh, ngay=None):
     if kwh is None or kwh <= 0:
         return None, {}
-    tiers = [
-        {"limit": 50, "price": 1984}, {"limit": 50, "price": 2050}, {"limit": 100, "price": 2380},
-        {"limit": 100, "price": 2998}, {"limit": 100, "price": 3350}, {"limit": float("inf"), "price": 3460}
-    ]
+    bg = lay_bieu_gia(ngay)
     total_cost = 0
     remaining_kwh = kwh
     tier_details = []
-    for i, tier in enumerate(tiers, 1):
-        kwh_in_tier = min(remaining_kwh, tier["limit"])
-        cost = kwh_in_tier * tier["price"]
+    for i, (limit, price) in enumerate(bg["tiers"], 1):
+        kwh_in_tier = remaining_kwh if limit is None else min(remaining_kwh, limit)
+        cost = kwh_in_tier * price
         total_cost += cost
-        tier_details.append({f"Bậc thang {i}": {"VNĐ/kWh": tier["price"], "kWh": kwh_in_tier, "Tính Tiền": cost}})
+        tier_details.append({f"Bậc thang {i}": {"VNĐ/kWh": price, "kWh": kwh_in_tier, "Tính Tiền": cost}})
         remaining_kwh -= kwh_in_tier
         if remaining_kwh <= 0:
             break
-    tax = total_cost * 0.08
+    tax = total_cost * bg["vat"]
     total_with_tax = total_cost + tax
-    return total_with_tax, {"Tiền trước thuế": total_cost, "Thuế 8%": tax, "Chi tiết bậc thang": tier_details}
+    return total_with_tax, {
+        "Tiền trước thuế": total_cost,
+        f"Thuế {bg['vat'] * 100:g}%": tax,
+        "Chi tiết bậc thang": tier_details,
+        "Áp dụng từ": bg["from"],
+    }
 
 # Hàm truy vấn dữ liệu từ SQLite
 
