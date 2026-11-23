@@ -179,17 +179,26 @@ class EVNMonthlyDataView(HomeAssistantView):
             current_year = datetime.now().year
             bills = layhoadon(account, current_year)
 
-            # Ghi đè số liệu từ file /config/npc_monthly_override.json
-            # Định dạng: {"2026": {"1": [kWh, tiền], "2": [kWh, tiền], ...}}
+            # Ghi đè số liệu từ file /config/npc_monthly_override.json THEO TỪNG MÃ KH
+            # Định dạng: {"PNNQ000010429": {"2026": {"1": [kWh, tiền], "2": [kWh, tiền], ...}}}
+            # Chỉ áp dụng cho đúng mã KH khai báo, các mã khác không bị ảnh hưởng.
             try:
                 p = self.hass.config.path("npc_monthly_override.json")
                 if os.path.exists(p):
                     with open(p, encoding="utf-8") as f:
-                        ov = json.load(f).get(str(current_year), {})
-                    d = {int(b[0]): (int(b[0]), b[1], b[2]) for b in bills}
-                    for m, val in ov.items():
-                        d[int(m)] = (int(m), float(val[1]), float(val[0]))
-                    bills = [d[k] for k in sorted(d)]
+                        raw = json.load(f)
+                    by_acc = {str(k).strip().upper(): v for k, v in raw.items() if isinstance(v, dict) and not str(k).isdigit()}
+                    if any(str(k).isdigit() for k in raw):
+                        _LOGGER.warning(
+                            "npc_monthly_override.json dùng định dạng cũ (không có mã KH) nên bị bỏ qua; "
+                            'hãy đổi thành {"<MÃ KH>": {"%s": {"1": [kWh, tiền]}}}', current_year
+                        )
+                    ov = (by_acc.get(str(account).strip().upper()) or {}).get(str(current_year), {})
+                    if ov:
+                        d = {int(b[0]): (int(b[0]), b[1], b[2]) for b in bills}
+                        for m, val in ov.items():
+                            d[int(m)] = (int(m), float(val[1]), float(val[0]))
+                        bills = [d[k] for k in sorted(d)]
             except Exception as ov_ex:
                 _LOGGER.warning("npc override error: %s", ov_ex)
             
