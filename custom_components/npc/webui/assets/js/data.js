@@ -1,3 +1,23 @@
+// ===== BIỂU GIÁ ĐIỆN SINH HOẠT THEO NGÀY HIỆU LỰC (dùng chung data.js + main.js) =====
+// Khi giá/VAT đổi: THÊM một mục mới ở cuối, không sửa mục cũ.
+//   from: ngày bắt đầu áp dụng (YYYY-MM-DD); vat: 0.08 = 8%; tiers: số kWh trong bậc + đơn giá (chưa VAT)
+// Mỗi kỳ/tháng tính theo biểu giá có hiệu lực tại ngày cuối kỳ nên các tháng cũ không bị đổi.
+const NPC_TARIFF = [
+    { from: '2025-05-10', vat: 0.08, tiers: [
+        { limit: 50, price: 1984 }, { limit: 50, price: 2050 }, { limit: 100, price: 2380 },
+        { limit: 100, price: 2998 }, { limit: 100, price: 3350 }, { limit: Infinity, price: 3460 } ] },
+    { from: '2026-11-01', vat: 0.08, tiers: [
+        { limit: 100, price: 1901 }, { limit: 100, price: 2289 }, { limit: 200, price: 2894 },
+        { limit: 300, price: 3456 }, { limit: Infinity, price: 3844 } ] }
+];
+function npcTariffAt(date) {
+    const d = date instanceof Date && !isNaN(date) ? date : new Date();
+    const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    let t = NPC_TARIFF[0];
+    NPC_TARIFF.forEach(e => { if (e.from <= key) t = e; });
+    return t;
+}
+
 // Data Management Module
 class DataManager {
     constructor() {
@@ -434,7 +454,7 @@ class DataManager {
             const key = `${entry.Năm}-${entry.Tháng}`;
             const monthlyCost = costMap.has(key)
                 ? costMap.get(key)
-                : (entry.consumption > 0 ? this.tinhTienDien(entry.consumption).total : 0);
+                : (entry.consumption > 0 ? this.tinhTienDien(entry.consumption, new Date(this.normalizeYearValue(entry.Năm) || new Date().getFullYear(), Number(entry.Tháng), 0)).total : 0);
 
             SanLuong.push({
                 Tháng: entry.Tháng,
@@ -890,7 +910,7 @@ class DataManager {
                     monthlyCost = parseInt(monthlyDataItem["Tiền Điện"] || 0);
                 } else {
                     if (totalConsumption > 0) {
-                        const costCalculation = this.tinhTienDien(totalConsumption);
+                        const costCalculation = this.tinhTienDien(totalConsumption, new Date(targetYear, Number(monthNum), 0));
                         monthlyCost = costCalculation.total;
                     } else {
                         monthlyCost = 0;
@@ -955,20 +975,14 @@ class DataManager {
         });
     }
 
-    // Tính tiền điện theo bậc thang (từ NPC utils.py)
-    tinhTienDien(kwh) {
+    // Tính tiền điện theo bậc thang (từ NPC utils.py); ngay = ngày cuối kỳ/tháng để chọn biểu giá
+    tinhTienDien(kwh, ngay) {
         if (!kwh || kwh <= 0) {
             return { total: 0, details: {} };
         }
 
-        const tiers = [
-            { limit: 50, price: 1984 },
-            { limit: 50, price: 2050 },
-            { limit: 100, price: 2380 },
-            { limit: 100, price: 2998 },
-            { limit: 100, price: 3350 },
-            { limit: Infinity, price: 3460 }
-        ];
+        const bg = npcTariffAt(ngay);
+        const tiers = bg.tiers;
 
         let totalCost = 0;
         let remainingKwh = kwh;
@@ -991,7 +1005,7 @@ class DataManager {
             if (remainingKwh <= 0) break;
         }
 
-        const tax = totalCost * 0.08;
+        const tax = totalCost * bg.vat;
         const totalWithTax = totalCost + tax;
 
         return {
@@ -1035,7 +1049,7 @@ class DataManager {
         if (this.currentPeriodFromSensor && this.currentPeriodFromSensor.tieu_thu_ky_nay > 0) {
             const consumption = this.currentPeriodFromSensor.tieu_thu_ky_nay;
             const cost = this.currentPeriodFromSensor.tien_dien_ky_nay;
-            const billCalculation = this.tinhTienDien(consumption);
+            const billCalculation = this.tinhTienDien(consumption, currentPeriod.end_ky);
 
             console.log('⚡ calculateCurrentPeriod: Using SENSOR data:', consumption, 'kWh,', cost, 'VND');
 
