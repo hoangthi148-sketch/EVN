@@ -103,7 +103,9 @@ class EVNDataUpdateCoordinator(DataUpdateCoordinator):
             from_date = start_date.strftime("%d/%m/%Y")
             to_date = (today + timedelta(days=30)).strftime("%d/%m/%Y")
             outage_data = await self.api.get_ngungcapdien(from_date, to_date)
-            if outage_data and outage_data.get("data"):
+            # An empty list is a valid answer (the outage was cancelled), so it
+            # must also be synced; only skip when the request failed (None).
+            if outage_data and isinstance(outage_data.get("data"), list):
                 await self._save_outage_data(outage_data["data"])
 
             # Return summary data
@@ -382,10 +384,12 @@ class EVNDataUpdateCoordinator(DataUpdateCoordinator):
             _LOGGER.error(f"Error saving hóa đơn to monthly_bill: {e}", exc_info=True)
 
     async def _save_outage_data(self, data: list):
-        """Save power outage schedule to database."""
-        if not data:
-            return
+        """Save power outage schedule to database.
 
+        Upcoming/today rows for this customer are replaced by the fresh API
+        result, so outages cancelled by EVN (or an empty response) disappear.
+        Past rows are kept as history.
+        """
         try:
             os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
             conn = sqlite3.connect(DB_PATH)
@@ -404,6 +408,23 @@ class EVNDataUpdateCoordinator(DataUpdateCoordinator):
                     PRIMARY KEY (userevn, ngay_bat_dau, thoi_gian_bat_dau)
                 )
             """)
+
+            # Drop stale upcoming outages before inserting the fresh ones
+            today_date = datetime.now().date()
+            cursor.execute(
+                "SELECT ngay_bat_dau, thoi_gian_bat_dau FROM power_outage_schedule WHERE userevn=?",
+                (self.customer_id,),
+            )
+            for old_ngay, old_tg in cursor.fetchall():
+                try:
+                    old_date = datetime.strptime(old_ngay, "%d-%m-%Y").date()
+                except (ValueError, TypeError):
+                    continue
+                if old_date >= today_date:
+                    cursor.execute(
+                        "DELETE FROM power_outage_schedule WHERE userevn=? AND ngay_bat_dau=? AND thoi_gian_bat_dau=?",
+                        (self.customer_id, old_ngay, old_tg),
+                    )
 
             for outage in data:
                 # Try multiple field names for NPC API
